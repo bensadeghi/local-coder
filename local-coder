@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+# local-coder - Simple management tool for llama.cpp + OpenCode
+# Usage: local-coder <command> [options]
+
+set -e
+
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source library loader first (defines common paths and functions)
+source "$SCRIPT_DIR/scripts/lib.sh"
+
+# Source library modules
+LIB_DIR="$SCRIPT_DIR/scripts/lib"
+for lib in "$LIB_DIR"/*.sh; do
+    if [[ -f "$lib" ]]; then
+        source "$lib"
+    fi
+done
+
+# Version
+VERSION="0.1.0"
+
+# Show usage
+show_help() {
+    cat << EOF
+local-coder v${VERSION} - Simple management tool for llama.cpp + OpenCode
+
+USAGE:
+    local-coder <command> [options]
+
+SERVER COMMANDS:
+    start [model] [options]
+                        Start llama-server (default: last used model)
+                        Options: --ctx-size N, --gpu-layers N, --threads N, --n-cpu-moe N
+    stop                Stop llama-server
+    restart [model] [options]
+                        Restart llama-server
+    status              Show server status and info
+    logs [tail]         Show server logs
+
+MODEL COMMANDS:
+    models list         List all available models
+    models download <url|name>
+                        Download a model from URL or predefined name
+    models delete <model>
+                        Delete a model
+    models set-default <model>
+                        Set default model
+
+CONFIG COMMANDS:
+    config              Show all configuration
+    config get <key>    Get configuration value
+    config set <key> <value>
+                        Set configuration value
+    config edit         Open configuration in \$EDITOR
+
+INTEGRATION COMMANDS:
+    open                Launch OpenCode TUI
+    install             Install system-wide
+    uninstall           Remove installation
+
+OTHER:
+    help                Show this help message
+    version             Show version information
+
+EXAMPLES:
+    local-coder start
+    local-coder start qwen3-coder
+    local-coder models list
+    local-coder status
+
+For more information, see: https://github.com/your-repo/local-coder
+EOF
+}
+
+# Show version
+show_version() {
+    echo "local-coder v${VERSION}"
+}
+
+# Open OpenCode TUI
+cmd_open() {
+    config_init
+
+    # Check if server is running
+    if ! server_is_running; then
+        warn "Server is not running. Start it first with: local-coder start"
+
+        if confirm "Start server now?" "y"; then
+            server_start || exit 1
+        else
+            exit 1
+        fi
+    fi
+
+    info "Launching OpenCode..."
+    info "Connected to: $(config_get_server_url)"
+
+    exec opencode
+}
+
+# Install system-wide
+cmd_install() {
+    local install_dir="/usr/local/bin"
+    local target="$install_dir/local-coder"
+
+    if [[ ! -w "$install_dir" ]]; then
+        error "Need sudo to install to $install_dir"
+        info "Run: sudo ./local-coder install"
+        exit 1
+    fi
+
+    info "Installing local-coder to $install_dir..."
+
+    # Copy script
+    cp "$SCRIPT_DIR/local-coder" "$target"
+    chmod +x "$target"
+
+    # Initialize config
+    ensure_dirs
+
+    # Create default config if not exists
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        info "Creating config at $CONFIG_FILE"
+        "$SCRIPT_DIR/local-coder" config show > /dev/null 2>&1 || true
+    fi
+
+    success "Installation complete"
+    info "Run 'local-coder' from anywhere"
+}
+
+# Uninstall
+cmd_uninstall() {
+    local target="/usr/local/bin/local-coder"
+
+    if ! confirm "Remove $target?" "n"; then
+        info "Uninstall cancelled"
+        return 0
+    fi
+
+    info "Uninstalling local-coder..."
+
+    if rm -f "$target"; then
+        success "Uninstalled successfully"
+        info "Config and data remain in: $CONFIG_DIR and $DATA_DIR"
+        info "Remove manually with: rm -rf $CONFIG_DIR $DATA_DIR"
+    else
+        warn "Could not remove $target (need sudo?)"
+    fi
+}
+
+# Main command dispatcher
+main() {
+    # Parse command
+    local command="${1:-help}"
+    shift || true
+
+    case "$command" in
+        start)
+            cmd_start "$@"
+            ;;
+        stop)
+            cmd_stop "$@"
+            ;;
+        restart)
+            cmd_restart "$@"
+            ;;
+        status)
+            cmd_status "$@"
+            ;;
+        logs)
+            cmd_logs "$@"
+            ;;
+        models)
+            # Subcommand for models
+            local model_cmd="${1:-help}"
+            shift || true
+            case "$model_cmd" in
+                list)
+                    cmd_models_list "$@"
+                    ;;
+                download)
+                    cmd_models_download "$@"
+                    ;;
+                delete)
+                    cmd_models_delete "$@"
+                    ;;
+                set-default)
+                    cmd_models_set_default "$@"
+                    ;;
+                *)
+                    echo "Error: Unknown models command: $model_cmd" >&2
+                    echo "Valid commands: list, download, delete, set-default" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        config)
+            # Subcommand for config
+            local config_cmd="${1:-}"
+            shift || true
+            case "$config_cmd" in
+                "")
+                    cmd_config_show
+                    ;;
+                get)
+                    cmd_config_get "$@"
+                    ;;
+                set)
+                    cmd_config_set "$@"
+                    ;;
+                edit)
+                    cmd_config_edit
+                    ;;
+                *)
+                    echo "Error: Unknown config command: $config_cmd" >&2
+                    echo "Valid commands: get, set, edit (or no arg to show all)" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        open)
+            cmd_open "$@"
+            ;;
+        install)
+            cmd_install "$@"
+            ;;
+        uninstall)
+            cmd_uninstall "$@"
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        version|--version|-v)
+            show_version
+            ;;
+        *)
+            echo "Error: Unknown command: $command" >&2
+            echo "Run 'local-coder help' for usage information" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Run main
+main "$@"

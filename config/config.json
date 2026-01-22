@@ -1,0 +1,26 @@
+{
+  "server": {
+    "binary": "/home/bs/repos/llama.cpp/build/bin/llama-server",
+    "host": "127.0.0.1",
+    "port": 8081,
+    "default_model": null,
+    "threads": -1,
+    "gpu_layers": 35,
+    "n_cpu_moe": 12,
+    "ctx_size": 32768,
+    "batch_size": 2048,
+    "ubatch_size": 512
+  },
+  "paths": {
+    "models": [
+      "/home/bs/.cache/llama.cpp",
+      "/home/bs/.local/share/local-coder/models"
+    ],
+    "logs": "/home/bs/.local/share/local-coder/logs",
+    "pid": "/home/bs/.local/share/local-coder/pid"
+  },
+  "opencode": {
+    "config_path": "/home/bs/.config/opencode/opencode.json",
+    "provider": "llama.cpp"
+  }
+}
